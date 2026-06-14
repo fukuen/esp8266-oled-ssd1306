@@ -365,7 +365,7 @@ class OLEDDisplay : public Stream {
     uint16_t  displayWidth;
     uint16_t  displayHeight;
     uint16_t  maxDisplayHeight;
-    uint16_t  displayBufferSize;
+    uint32_t  displayBufferSize;
 
     OLEDDISPLAY_TEXT_ALIGNMENT   textAlignment;
     OLEDDISPLAY_COLOR            color;
@@ -373,7 +373,7 @@ class OLEDDisplay : public Stream {
     const uint8_t	 *fontData;
 
     // State values for logBuffer
-    uint16_t   logBufferSize;
+    uint32_t   logBufferSize;
     uint16_t   logBufferFilled;
     uint16_t   logBufferLine;
     uint16_t   logBufferMaxLines;
