@@ -97,7 +97,7 @@ class AutoOLEDWire : public OLEDDisplay {
       this->_scl = _scl;
 #if !defined(ARDUINO_ARCH_ESP32) && !defined(ARCH_RP2040)
       this->_wire = &Wire;
-#elif defined(CONFIG_IDF_TARGET_ESP32C6)
+#elif defined(SOC_HP_I2C_NUM) && SOC_HP_I2C_NUM < 2 // ESP32-C2/C3/C6/...: one HP I2C controller, use Wire
       this->_wire = &Wire;
 #else
       this->_wire = (_i2cBus==I2C_ONE) ? &Wire : &Wire1;
@@ -245,6 +245,12 @@ class AutoOLEDWire : public OLEDDisplay {
 
           sendCommand(PAGEADDR);
           sendCommand(0x0);
+          // PAGEADDR (0x22) requires BOTH start and end parameters. Omitting the
+          // end page leaves the command parser waiting, and the next command byte
+          // sent (e.g. SEGREMAP from flipScreenVertically(), or the next frame's
+          // COLUMNADDR) is silently consumed as the end-page value — mirroring
+          // and/or collapsing the addressing window.
+          sendCommand((this->height() / 8) - 1);
 
           for (uint16_t i=0; i < displayBufferSize; i++) {
             _wire->beginTransmission(this->_address);
@@ -258,17 +264,22 @@ class AutoOLEDWire : public OLEDDisplay {
           }
         }else{
           uint8_t * p = &buffer[0];
-          for (uint8_t y=0; y<8; y++) {
+          uint8_t colOffset = (this->_detected == SH1107_DETECTED) ? 0x00 : 0x02;
+          uint8_t pages = (displayHeight + 7) / 8;
+          for (uint8_t y=0; y<pages; y++) {
             sendCommand(0xB0+y);
-            sendCommand(0x02);
+            sendCommand(colOffset);
             sendCommand(0x10);
-            for( uint8_t x=0; x<(128/I2C_OLED_TRANSFER_BYTE); x++) {
+            uint16_t remaining = displayWidth;
+            while (remaining > 0) {
+              uint8_t blockLen = (remaining > I2C_OLED_TRANSFER_BYTE) ? I2C_OLED_TRANSFER_BYTE : remaining;
               _wire->beginTransmission(_address);
               _wire->write(0x40);
-              for (uint8_t k = 0; k < I2C_OLED_TRANSFER_BYTE; k++) {
+              for (uint8_t k = 0; k < blockLen; k++) {
                 _wire->write(*p++);
               }
               _wire->endTransmission();
+              remaining -= blockLen;
             }
           }
         }

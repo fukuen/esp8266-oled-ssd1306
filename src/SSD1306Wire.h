@@ -84,7 +84,7 @@ class SSD1306Wire : public OLEDDisplay {
       this->_scl = _scl;
 #if !defined(ARDUINO_ARCH_ESP32)
       this->_wire = &Wire;
-#elif defined(CONFIG_IDF_TARGET_ESP32C6)
+#elif defined(SOC_HP_I2C_NUM) && SOC_HP_I2C_NUM < 2 // ESP32-C2/C3/C6/...: one HP I2C controller, use Wire
       this->_wire = &Wire;
 #else
       this->_wire = (_i2cBus==I2C_ONE) ? &Wire : &Wire1;
@@ -186,15 +186,20 @@ class SSD1306Wire : public OLEDDisplay {
 
         sendCommand(PAGEADDR);
         sendCommand(_y_offset);
+        // PAGEADDR (0x22) requires BOTH start and end parameters. Omitting the
+        // end page leaves the command parser waiting, and the next command byte
+        // sent (e.g. SEGREMAP from flipScreenVertically(), or the next frame's
+        // COLUMNADDR) is silently consumed as the end-page value — mirroring
+        // and/or collapsing the addressing window.
+        sendCommand(_y_offset + (this->height() / 8) - 1);
 
-        for (uint16_t i=0; i < displayBufferSize; i++) {
+        for (uint16_t i = 0; i < displayBufferSize;) {
           _wire->beginTransmission(this->_address);
           _wire->write(0x40);
-          for (uint8_t x = 0; x < (I2C_MAX_TRANSFER_BYTE - 1); x++) {
-            _wire->write(buffer[i]);
-            i++;
+          const uint8_t chunkSize = std::min<uint16_t>(I2C_MAX_TRANSFER_BYTE - 1, displayBufferSize - i);
+          for (uint8_t x = 0; x < chunkSize; x++) {
+            _wire->write(buffer[i++]);
           }
-          i--;
           _wire->endTransmission();
         }
       #endif
